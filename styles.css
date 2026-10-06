@@ -1,0 +1,4 @@
+/* Maximize: siblings of the active tab group, up to the main area, are hidden. */
+.tab-history-hidden {
+  display: none !important;
+}
