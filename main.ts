@@ -113,13 +113,16 @@ export default class TabHistoryPlugin extends Plugin {
     }));
     this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.requestSave()));
     this.registerEvent(this.app.workspace.on('file-open', () => this.requestSave()));
-    this.registerEvent(this.app.workspace.on('quit', () => void this.saveHistory()));
+    // Obsidian waits for what is added here before it closes.
+    this.registerEvent(this.app.workspace.on('quit', (tasks) => tasks.addPromise(this.saveHistory())));
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
       renameInSaved(this.saved, oldPath, file.path);
       this.requestSave();
     }));
 
-    this.registerDomEvent(window, 'mouseup', (event) => this.onMouseUp(event), { capture: true });
+    // The main window and every popout window, since each one handles its own mouse buttons.
+    this.listenToMouse(window);
+    this.registerEvent(this.app.workspace.on('window-open', (_, win) => this.listenToMouse(win)));
 
     this.app.workspace.onLayoutReady(() => this.restoreHistory());
   }
@@ -362,7 +365,17 @@ export default class TabHistoryPlugin extends Plugin {
 
   // ---- mouse buttons -------------------------------------------------------------
 
-  private onMouseUp(event: MouseEvent) {
+  private listenToMouse(win: Window) {
+    this.registerDomEvent(win, 'pointerdown', (event) => this.onPointerDown(event), { capture: true });
+  }
+
+  /**
+   * Obsidian itself reacts to mouse buttons 4 and 5 on `mousedown` (on every
+   * platform but Linux) and moves the active tab. Cancelling `pointerdown` in
+   * the capture phase stops the browser from sending the `mousedown` and
+   * `mouseup` that follow, so only the tab under the pointer moves.
+   */
+  private onPointerDown(event: PointerEvent) {
     if (!this.settings.mouseButtons || (event.button !== 3 && event.button !== 4)) return;
     const header = (event.target as HTMLElement | null)?.closest?.('.workspace-tab-header');
     if (!header) return;
@@ -373,7 +386,6 @@ export default class TabHistoryPlugin extends Plugin {
     const leaf = found as WorkspaceLeaf | null;
     const history = leaf ? rawHistory(leaf) : null;
     if (!leaf || !history) return;
-    // Obsidian would also navigate the active tab on these buttons; this click is for the tab under the pointer.
     event.preventDefault();
     event.stopPropagation();
     const nav = leaf as unknown as { history: { back(): void; forward(): void } };
