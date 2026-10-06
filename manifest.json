@@ -1,0 +1,10 @@
+{
+  "id": "tab-history",
+  "name": "Tab History",
+  "version": "0.1.0",
+  "minAppVersion": "0.16.3",
+  "description": "Keeps each tab's back and forward history across restarts, and adds commands to move, maximize and close tabs.",
+  "author": "Siulved54",
+  "authorUrl": "https://github.com/perezamadorluisenrique-gif",
+  "isDesktopOnly": false
+}
