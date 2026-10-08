@@ -29,10 +29,11 @@ test('sanitizeEntries drops malformed entries and missing files, keeps views wit
   assert.deepEqual(kept.map((e) => e.title), ['a.md', 'Graph']);
 });
 
-test('sanitizeEntries caps back at the tail and forward at the head', () => {
+test('sanitizeEntries keeps the nearest entries, which come last in both lists', () => {
   const list = [entry('1.md'), entry('2.md'), entry('3.md')];
-  assert.deepEqual(sanitizeEntries(list, all, 2, 'tail').map((e) => e.title), ['2.md', '3.md']);
-  assert.deepEqual(sanitizeEntries(list, all, 2, 'head').map((e) => e.title), ['1.md', '2.md']);
+  assert.deepEqual(sanitizeEntries(list, all, 2).map((e) => e.title), ['2.md', '3.md']);
+  const tab = sanitizeTab({ back: list, forward: list }, all, 2);
+  assert.deepEqual(tab.forward.map((e) => e.title), ['2.md', '3.md']);
 });
 
 test('sanitizeEntries copes with non-arrays', () => {
