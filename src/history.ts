@@ -44,14 +44,13 @@ export function capEntries<T>(entries: T[], max: number): T[] {
 
 /**
  * Cleans a list read from disk or from a tab: drops malformed entries and those
- * whose file is gone, then applies the cap. `forward` lists run nearest first,
- * so they keep their head instead of their tail.
+ * whose file is gone, then applies the cap. Both lists run farthest first and end
+ * with the nearest entry (Obsidian pops from the end), so both keep their tail.
  */
 export function sanitizeEntries(
   entries: unknown,
   exists: (path: string) => boolean,
   max: number,
-  keep: 'tail' | 'head' = 'tail',
 ): HistoryEntry[] {
   if (!Array.isArray(entries)) return [];
   const clean = entries.filter((e): e is HistoryEntry => {
@@ -59,15 +58,14 @@ export function sanitizeEntries(
     const file = entryFile(e);
     return file === null || exists(file);
   });
-  if (keep === 'tail') return capEntries(clean, max);
-  return clean.slice(0, Math.max(0, Math.floor(max)));
+  return capEntries(clean, max);
 }
 
 export function sanitizeTab(raw: unknown, exists: (path: string) => boolean, max: number): TabHistory {
   const source = (typeof raw === 'object' && raw !== null ? raw : {}) as { back?: unknown; forward?: unknown };
   return {
-    back: sanitizeEntries(source.back, exists, max, 'tail'),
-    forward: sanitizeEntries(source.forward, exists, max, 'head'),
+    back: sanitizeEntries(source.back, exists, max),
+    forward: sanitizeEntries(source.forward, exists, max),
   };
 }
 
