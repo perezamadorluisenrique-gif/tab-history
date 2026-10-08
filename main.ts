@@ -454,7 +454,7 @@ export default class TabHistoryPlugin extends Plugin {
   private listenToMouse(win: Window) {
     this.registerDomEvent(win, 'pointerdown', (event) => this.onPointerDown(event), { capture: true });
     // The arrows' tooltip is filled in as the pointer arrives, so it is never out of date.
-    this.registerDomEvent(win, 'mouseover', (event) => this.onNavHover(event), { capture: true });
+    this.registerDomEvent(win, 'pointerover', (event) => this.onNavHover(event), { capture: true });
     this.registerDomEvent(win, 'pointerdown', (event) => this.onNavTouch(event), { capture: true });
     this.registerDomEvent(win, 'contextmenu', (event) => this.onNavContext(event), { capture: true });
   }
@@ -486,7 +486,7 @@ export default class TabHistoryPlugin extends Plugin {
     }
   }
 
-  private onNavHover(event: MouseEvent) {
+  private onNavHover(event: PointerEvent) {
     const target = this.navTarget(event.target);
     if (!target) return;
     const entries = this.entriesOf(target.leaf, target.kind);
