@@ -1,5 +1,5 @@
 /* Maximize: siblings of the active tab group, up to the main area, are hidden.
-   The extra selectors (not !important) are what win over the app's own display rules. */
+   The extra selectors (instead of an override flag) are what win over the app's own display rules. */
 body.tab-history-has-maximized .workspace .tab-history-hidden {
   display: none;
 }
