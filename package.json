@@ -1,6 +1,6 @@
 {
   "name": "tab-history",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tab History for Obsidian - Keeps each tab's back and forward history across restarts, and adds commands to move, maximize and close tabs.",
   "main": "main.js",
   "scripts": {

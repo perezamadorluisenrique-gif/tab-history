@@ -22,6 +22,7 @@ Each tab's back and forward lists are saved as you work and put back when Obsidi
 | Move tab to last position | Puts the tab at the end of its tab group. |
 | Toggle maximize active tab | Hides the other panes in the main area so the active tab group fills it. Run it again to bring them back. |
 | Close tab and activate the next one | Closes the tab and focuses its neighbour, as a browser does (or the most recently used tab, see the settings). Pinned tabs stay. |
+| Toggle sidebar focus lock | Turns the sidebar focus lock on or off. |
 | Clear back and forward history of all tabs | Forgets the history of every open tab and everything saved. |
 
 No hotkeys are set; assign your own in **Settings → Hotkeys**.
@@ -30,12 +31,21 @@ No hotkeys are set; assign your own in **Settings → Hotkeys**.
 
 Click a tab header with the back or forward button of your mouse to go back or forward in **that** tab, even when it is not the active one. You can turn it off in the settings.
 
+## Back and forward arrows
+
+Hover an arrow in the tab header to see where it goes and how many more entries are behind it, such as "Back to Meeting notes (3 more)". Right-click an arrow (or long-press it on a touch screen) to list that tab's back or forward history and jump straight to an entry.
+
+## Sidebar focus lock
+
+Off by default. When on, clicking in a sidebar or opening a note from one keeps the focus in the editor, so your next keystrokes go to the note. Commands that open a sidebar still show it. Toggle it from the settings or with the command **Toggle sidebar focus lock**.
+
 ## Settings
 
 - **Remember history across restarts** (on)
 - **Entries kept per tab** (50)
 - **Mouse buttons 4 and 5** (on)
 - **After closing a tab, activate**: the next tab, or the most recently used tab
+- **Sidebar focus lock** (off)
 - **Clear history**
 
 ## Installation
