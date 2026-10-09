@@ -22,6 +22,8 @@ Each tab's back and forward lists are saved as you work and put back when Obsidi
 | Move tab to last position | Puts the tab at the end of its tab group. |
 | Toggle maximize active tab | Hides the other panes in the main area so the active tab group fills it. Run it again to bring them back. |
 | Close tab and activate the next one | Closes the tab and focuses its neighbour, as a browser does (or the most recently used tab, see the settings). Pinned tabs stay. |
+| Switch to previous tab (most recently used) | Activates the tab you were on before this one. Run it twice to toggle between two tabs. |
+| Show recent tabs | Lists open tabs, most recently used first, with folder and window. Type to search, Enter to switch. |
 | Toggle sidebar focus lock | Turns the sidebar focus lock on or off. |
 | Clear back and forward history of all tabs | Forgets the history of every open tab and everything saved. |
 
@@ -35,6 +37,12 @@ Click a tab header with the back or forward button of your mouse to go back or f
 
 Hover an arrow in the tab header to see where it goes and how many more entries are behind it, such as "Back to Meeting notes (3 more)". Right-click an arrow (or long-press it on a touch screen) to list that tab's back or forward history and jump straight to an entry.
 
+## Switching tabs by recent use
+
+Tab History remembers the order in which you used your tabs, in the main area and in popout windows, and keeps it across restarts. **Switch to previous tab (most recently used)** jumps back to the last tab you were on, and doing it again returns, like Alt+Tab. **Show recent tabs** opens a list of every open tab, newest first, showing its title, folder and window ("Main window", "Window 2"); type to filter, press Enter to switch.
+
+To use Ctrl+Tab for it, open **Settings → Hotkeys**. Obsidian binds Ctrl+Tab to "Go to next tab", so remove that binding first, then assign Ctrl+Tab to **Show recent tabs**. Opened that way, keep Ctrl held and press Tab to move down the list (add Shift to move up), and let go of Ctrl to switch. No hotkeys are set by default. Sidebar tabs are left out unless you turn on **Recent tabs: include sidebars**.
+
 ## Sidebar focus lock
 
 Off by default. When on, clicking in a sidebar or opening a note from one keeps the focus in the editor, so your next keystrokes go to the note. Commands that open a sidebar still show it. Toggle it from the settings or with the command **Toggle sidebar focus lock**.
@@ -46,6 +54,7 @@ Off by default. When on, clicking in a sidebar or opening a note from one keeps 
 - **Mouse buttons 4 and 5** (on)
 - **After closing a tab, activate**: the next tab, or the most recently used tab
 - **Sidebar focus lock** (off)
+- **Recent tabs: include sidebars** (off)
 - **Clear history**
 
 ## Installation

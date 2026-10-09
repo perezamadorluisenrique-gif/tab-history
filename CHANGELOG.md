@@ -4,6 +4,10 @@ The release workflow uses the section named after the version being released
 as the release description, so every version needs one. `npm version <x.y.z>`
 renames the `Unreleased` heading below to that version.
 
+## Unreleased
+
+- New commands "Switch to previous tab (most recently used)" and "Show recent tabs": switch tabs in most-recently-used order, across popout windows, remembered across restarts. Bind them to Ctrl+Tab and hold Ctrl to cycle.
+
 ## 0.2.0
 
 - Back and forward arrows show the target and how many more entries there are, and a right-click or long-press lists the history to jump straight to an entry. New sidebar focus lock setting, and no more !important in the styles.

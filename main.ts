@@ -5,8 +5,10 @@ import {
   Notice,
   Plugin,
   PluginSettingTab,
+  prepareFuzzySearch,
   Setting,
   type SettingDefinitionItem,
+  SuggestModal,
   View,
   WorkspaceLeaf,
   WorkspaceTabs,
@@ -24,6 +26,7 @@ import {
   type TabHistory,
 } from './src/history.ts';
 import { blocksActivation, jumpDelta, menuEntries, navLabel, type NavKind } from './src/nav.ts';
+import { activate, folderOf, parseMru, previousOf, reconcile, sameList, windowLabel } from './src/mru.ts';
 import { afterClose, moveIndex, moveItem, type AfterClose, type MoveTarget } from './src/tabs.ts';
 
 interface TabHistorySettings {
@@ -32,6 +35,7 @@ interface TabHistorySettings {
   mouseButtons: boolean;
   afterClose: AfterClose;
   focusLock: boolean;
+  recentIncludeSidebars: boolean;
 }
 
 const DEFAULT_SETTINGS: TabHistorySettings = {
@@ -40,10 +44,12 @@ const DEFAULT_SETTINGS: TabHistorySettings = {
   mouseButtons: true,
   afterClose: 'adjacent',
   focusLock: false,
+  recentIncludeSidebars: false,
 };
 
 interface StoredData extends Partial<TabHistorySettings> {
   history?: unknown;
+  mru?: unknown;
 }
 
 /**
@@ -104,6 +110,10 @@ export default class TabHistoryPlugin extends Plugin {
   private focusPatch: { original: unknown; wrapped: unknown; own: boolean } | null = null;
   private revealing = false;
   private lastMenuAt = 0;
+  private mru: string[] = [];
+  private mruReady = false;
+  /** When the last Ctrl+Tab key press happened, to tell a hold-to-cycle opening from a menu one. */
+  private ctrlTabAt = 0;
 
   private requestSave = debounce(() => void this.saveHistory(), 1500, true);
 
@@ -111,15 +121,20 @@ export default class TabHistoryPlugin extends Plugin {
     const data = (await this.loadData()) as StoredData | null;
     this.settings = { ...DEFAULT_SETTINGS, ...(data ?? {}) };
     this.saved = parseSaved(data?.history);
+    this.mru = parseMru(data?.mru);
 
     this.addSettingTab(new TabHistorySettingTab(this.app, this));
     this.registerCommands();
 
     this.registerEvent(this.app.workspace.on('layout-change', () => {
       this.dropStaleMaximize();
+      this.syncMru();
       this.requestSave();
     }));
-    this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.requestSave()));
+    this.registerEvent(this.app.workspace.on('active-leaf-change', (leaf) => {
+      this.noteActive(leaf);
+      this.requestSave();
+    }));
     this.registerEvent(this.app.workspace.on('file-open', () => this.requestSave()));
     // Obsidian waits for what is added here before it closes.
     this.registerEvent(this.app.workspace.on('quit', (tasks) => tasks.addPromise(this.saveHistory())));
@@ -130,11 +145,18 @@ export default class TabHistoryPlugin extends Plugin {
 
     // The main window and every popout window, since each one handles its own mouse buttons.
     this.listenToMouse(window);
-    this.registerEvent(this.app.workspace.on('window-open', (_, win) => this.listenToMouse(win)));
+    this.listenToKeys(window);
+    this.registerEvent(this.app.workspace.on('window-open', (_, win) => {
+      this.listenToMouse(win);
+      this.listenToKeys(win);
+    }));
 
     this.installFocusLock();
 
-    this.app.workspace.onLayoutReady(() => this.restoreHistory());
+    this.app.workspace.onLayoutReady(() => {
+      this.restoreHistory();
+      this.startMru();
+    });
   }
 
   onunload() {
@@ -142,6 +164,7 @@ export default class TabHistoryPlugin extends Plugin {
     this.removeFocusLock();
     // Last chance to keep what the user did this session.
     if (this.restored) void this.saveHistory();
+    if (this.mruReady) void this.saveMru();
   }
 
   // ---- history persistence -------------------------------------------------
@@ -207,7 +230,7 @@ export default class TabHistoryPlugin extends Plugin {
   }
 
   private async persist() {
-    const data: StoredData = { ...this.settings, history: this.saved };
+    const data: StoredData = { ...this.settings, history: this.saved, mru: this.mru };
     await this.saveData(data);
   }
 
@@ -216,6 +239,7 @@ export default class TabHistoryPlugin extends Plugin {
     this.saved = this.settings.persistHistory ? this.saved : emptySaved();
     await this.persist();
     this.requestSave();
+    this.syncMru();
     if (this.settings.focusLock) this.leaveSidebar();
   }
 
@@ -282,6 +306,29 @@ export default class TabHistoryPlugin extends Plugin {
     });
 
     this.addCommand({
+      id: 'switch-to-previous-tab',
+      name: 'Switch to previous tab (most recently used)',
+      icon: 'history',
+      checkCallback: (checking) => {
+        const target = this.previousLeaf();
+        if (!target) return false;
+        if (!checking) void this.activateLeaf(target);
+        return true;
+      },
+    });
+
+    this.addCommand({
+      id: 'show-recent-tabs',
+      name: 'Show recent tabs',
+      icon: 'layers',
+      checkCallback: (checking) => {
+        if (this.recentLeaves().length === 0) return false;
+        if (!checking) this.openRecent();
+        return true;
+      },
+    });
+
+    this.addCommand({
       id: 'toggle-sidebar-focus-lock',
       name: 'Toggle sidebar focus lock',
       icon: 'lock',
@@ -335,6 +382,123 @@ export default class TabHistoryPlugin extends Plugin {
     const next = nextIndex === null ? null : tabs.children[nextIndex];
     leaf.detach();
     if (next) this.app.workspace.setActiveLeaf(next, { focus: true });
+  }
+
+  // ---- most recently used tabs -----------------------------------------------------
+
+  private isSidebarLeaf(leaf: WorkspaceLeaf): boolean {
+    const root = leaf.getRoot();
+    return root === this.app.workspace.leftSplit || root === this.app.workspace.rightSplit;
+  }
+
+  /** Main area and popout windows always count; sidebars only when the setting says so. */
+  private isTracked(leaf: WorkspaceLeaf): boolean {
+    return !this.isSidebarLeaf(leaf) || this.settings.recentIncludeSidebars;
+  }
+
+  private trackedLeaves(): Map<string, WorkspaceLeaf> {
+    const leaves = new Map<string, WorkspaceLeaf>();
+    this.app.workspace.iterateAllLeaves((leaf) => {
+      const id = leafId(leaf);
+      if (id && this.isTracked(leaf)) leaves.set(id, leaf);
+    });
+    return leaves;
+  }
+
+  private currentLeaf(): WorkspaceLeaf | null {
+    return this.app.workspace.getActiveViewOfType(View)?.leaf ?? this.app.workspace.getMostRecentLeaf();
+  }
+
+  /** Once the layout is there: drop saved ids with no tab, add new tabs, put the active one first. */
+  private startMru() {
+    this.mruReady = true;
+    this.syncMru();
+    const active = this.currentLeaf();
+    if (active) this.noteActive(active);
+  }
+
+  private noteActive(leaf: WorkspaceLeaf | null) {
+    if (!this.mruReady || !leaf) return;
+    const id = leafId(leaf);
+    if (!id || !this.isTracked(leaf)) return;
+    const next = activate(this.mru, id);
+    if (!sameList(next, this.mru)) {
+      this.mru = next;
+      this.requestSaveMru();
+    }
+  }
+
+  /** Forget closed tabs and pick up new ones, keeping the order. */
+  private syncMru() {
+    if (!this.mruReady) return;
+    const next = reconcile(this.mru, [...this.trackedLeaves().keys()]);
+    if (!sameList(next, this.mru)) {
+      this.mru = next;
+      this.requestSaveMru();
+    }
+  }
+
+  private requestSaveMru = debounce(() => void this.saveMru(), 1500, true);
+
+  private async saveMru() {
+    await this.persist();
+  }
+
+  /** Open tabs, most recently used first. */
+  private recentLeaves(): WorkspaceLeaf[] {
+    const live = this.trackedLeaves();
+    return reconcile(this.mru, [...live.keys()]).map((id) => live.get(id)).filter((l): l is WorkspaceLeaf => !!l);
+  }
+
+  private previousLeaf(): WorkspaceLeaf | null {
+    const live = this.trackedLeaves();
+    const active = this.currentLeaf();
+    const current = active ? leafId(active) : null;
+    const id = previousOf(this.mru, [...live.keys()], current && live.has(current) ? current : null);
+    return id ? (live.get(id) ?? null) : null;
+  }
+
+  async activateLeaf(leaf: WorkspaceLeaf) {
+    await this.app.workspace.revealLeaf(leaf);
+    this.app.workspace.setActiveLeaf(leaf, { focus: true });
+    this.noteActive(leaf);
+  }
+
+  private windowOf(leaf: WorkspaceLeaf): string {
+    const workspace = this.app.workspace;
+    const root = leaf.getRoot();
+    if (root === workspace.leftSplit) return windowLabel('left');
+    if (root === workspace.rightSplit) return windowLabel('right');
+    if (root === workspace.rootSplit) return windowLabel('main');
+    const popouts = ((workspace as unknown as { floatingSplit?: { children?: unknown[] } }).floatingSplit ?? null)?.children ?? [];
+    const index = popouts.indexOf(root);
+    return windowLabel('popout', index === -1 ? 1 : index + 1);
+  }
+
+  private openRecent() {
+    const current = this.currentLeaf();
+    const items: RecentItem[] = this.recentLeaves()
+      .filter((leaf) => leaf !== current)
+      .map((leaf) => {
+        const file = (leaf.getViewState().state as { file?: unknown } | undefined)?.file;
+        const path = typeof file === 'string' ? file : null;
+        return { leaf, title: leaf.getDisplayText(), folder: folderOf(path), where: this.windowOf(leaf) };
+      });
+    if (items.length === 0) return;
+    // Opened by Ctrl+Tab a moment ago, so the key is probably still down.
+    const holding = Date.now() - this.ctrlTabAt < 400;
+    new RecentTabsModal(this.app, this, items, holding).open();
+  }
+
+  private listenToKeys(win: Window) {
+    this.registerDomEvent(
+      win,
+      'keydown',
+      (event) => {
+        if (event.key === 'Tab' && event.ctrlKey) this.ctrlTabAt = Date.now();
+      },
+      { capture: true },
+    );
   }
 
   // ---- sidebar focus lock -------------------------------------------------------
@@ -581,6 +745,111 @@ export default class TabHistoryPlugin extends Plugin {
   }
 }
 
+interface RecentItem {
+  leaf: WorkspaceLeaf;
+  title: string;
+  folder: string;
+  where: string;
+}
+
+/** The part of the suggest modal's list that the hold-to-cycle needs. Each use is feature-checked. */
+interface ChooserInternals {
+  values?: unknown[] | null;
+  selectedItem?: number;
+  setSelectedItem?: (index: number, evt?: unknown) => void;
+}
+
+class RecentTabsModal extends SuggestModal<RecentItem> {
+  private cycled: boolean;
+  private keyDoc: Document | null = null;
+
+  constructor(
+    app: App,
+    private plugin: TabHistoryPlugin,
+    private items: RecentItem[],
+    holding: boolean,
+  ) {
+    super(app);
+    this.setPlaceholder('Search open tabs');
+    this.limit = 100;
+    this.cycled = holding && this.list() !== null;
+    this.setInstructions([
+      { command: '↑↓', purpose: 'to navigate' },
+      { command: '↵', purpose: 'to switch' },
+      { command: 'esc', purpose: 'to dismiss' },
+    ]);
+    // Ctrl+Tab and Ctrl+Shift+Tab move the selection, as in a browser. Obsidian's own
+    // binding for them ("Go to next tab") would otherwise act behind the modal.
+    if (this.list() !== null) {
+      this.scope.register(['Ctrl'], 'Tab', () => this.cycle(1));
+      this.scope.register(['Ctrl', 'Shift'], 'Tab', () => this.cycle(-1));
+    }
+  }
+
+  private list(): ChooserInternals | null {
+    const chooser = (this as unknown as { chooser?: ChooserInternals }).chooser;
+    return chooser && typeof chooser.setSelectedItem === 'function' && typeof chooser.selectedItem === 'number' ? chooser : null;
+  }
+
+  private cycle(step: number): false {
+    const chooser = this.list();
+    const count = chooser?.values?.length ?? 0;
+    if (chooser && count > 0) {
+      this.cycled = true;
+      chooser.setSelectedItem?.((((chooser.selectedItem ?? 0) + step) % count + count) % count);
+    }
+    return false;
+  }
+
+  onOpen() {
+    void super.onOpen();
+    // Releasing Ctrl after Ctrl+Tab switches to the selected tab. A modal opened some
+    // other way is left alone until Enter, so releasing a modifier never surprises anyone.
+    this.keyDoc = this.modalEl.ownerDocument;
+    this.keyDoc.addEventListener('keyup', this.onKeyUp);
+  }
+
+  onClose() {
+    this.keyDoc?.removeEventListener('keyup', this.onKeyUp);
+    this.keyDoc = null;
+    super.onClose();
+  }
+
+  private onKeyUp = (event: KeyboardEvent) => {
+    if (event.key !== 'Control' || !this.cycled) return;
+    const chooser = this.list();
+    const item = chooser?.values?.[chooser.selectedItem ?? 0] as RecentItem | undefined;
+    if (!item) return;
+    this.close();
+    void this.plugin.activateLeaf(item.leaf);
+  };
+
+  getSuggestions(query: string): RecentItem[] {
+    const text = query.trim();
+    if (!text) return this.items;
+    const match = prepareFuzzySearch(text);
+    const scored: { item: RecentItem; score: number; rank: number }[] = [];
+    this.items.forEach((item, rank) => {
+      const found = match(`${item.title} ${item.folder}`);
+      if (found) scored.push({ item, score: found.score, rank });
+    });
+    scored.sort((a, b) => b.score - a.score || a.rank - b.rank);
+    return scored.map((entry) => entry.item);
+  }
+
+  renderSuggestion(item: RecentItem, el: HTMLElement) {
+    el.addClass('tab-history-recent');
+    el.createDiv({ cls: 'tab-history-recent-title', text: item.title });
+    const meta = el.createDiv({ cls: 'tab-history-recent-meta' });
+    if (item.folder) meta.createSpan({ cls: 'tab-history-recent-folder', text: item.folder });
+    meta.createSpan({ cls: 'tab-history-recent-window', text: item.where });
+  }
+
+  onChooseSuggestion(item: RecentItem) {
+    void this.plugin.activateLeaf(item.leaf);
+  }
+}
+
 const TEXT = {
   persistHistory: {
     name: 'Remember history across restarts',
@@ -601,6 +870,10 @@ const TEXT = {
   focusLock: {
     name: 'Sidebar focus lock',
     desc: 'Clicking in a sidebar, or opening a note from one, keeps the focus in the editor so your next keystrokes go to the note. Commands that open a sidebar still show it.',
+  },
+  recentIncludeSidebars: {
+    name: 'Recent tabs: include sidebars',
+    desc: 'Also track tabs in the left and right sidebars for "Switch to previous tab" and "Show recent tabs".',
   },
   clear: {
     name: 'Clear history',
@@ -633,6 +906,7 @@ class TabHistorySettingTab extends PluginSettingTab {
         control: { type: 'dropdown', key: 'afterClose', defaultValue: d.afterClose, options: AFTER_CLOSE_OPTIONS },
       },
       { ...TEXT.focusLock, control: { type: 'toggle', key: 'focusLock', defaultValue: d.focusLock } },
+      { ...TEXT.recentIncludeSidebars, control: { type: 'toggle', key: 'recentIncludeSidebars', defaultValue: d.recentIncludeSidebars } },
       {
         ...TEXT.clear,
         searchable: false,
@@ -687,6 +961,10 @@ class TabHistorySettingTab extends PluginSettingTab {
       .setName(TEXT.focusLock.name)
       .setDesc(TEXT.focusLock.desc)
       .addToggle((t) => t.setValue(settings.focusLock).onChange((v) => this.setControlValue('focusLock', v)));
+    new Setting(containerEl)
+      .setName(TEXT.recentIncludeSidebars.name)
+      .setDesc(TEXT.recentIncludeSidebars.desc)
+      .addToggle((t) => t.setValue(settings.recentIncludeSidebars).onChange((v) => this.setControlValue('recentIncludeSidebars', v)));
     this.clearButton(new Setting(containerEl).setName(TEXT.clear.name).setDesc(TEXT.clear.desc));
   }
 }
