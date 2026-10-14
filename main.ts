@@ -750,9 +750,15 @@ export default class TabHistoryPlugin extends Plugin {
     if (!leaf || !history) return;
     event.preventDefault();
     event.stopPropagation();
-    const nav = leaf as unknown as { history: { back(): void; forward(): void } };
-    if (event.button === 3) nav.history.back();
-    else nav.history.forward();
+    const nav = leaf as unknown as { history: { back(): unknown; forward(): unknown } };
+    const focused = this.app.workspace.getActiveViewOfType(View)?.leaf ?? null;
+    const moved = event.button === 3 ? nav.history.back() : nav.history.forward();
+    // Obsidian 1.7 also makes the tab it moves the active one; the focus
+    // belongs where it was.
+    if (!focused || focused === leaf) return;
+    void Promise.resolve(moved).then(() => {
+      if (this.app.workspace.getActiveViewOfType(View)?.leaf === leaf) this.app.workspace.setActiveLeaf(focused, { focus: true });
+    });
   }
 }
 

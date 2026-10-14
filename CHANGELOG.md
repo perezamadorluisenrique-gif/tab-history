@@ -4,7 +4,7 @@ The release workflow uses the section named after the version being released
 as the release description, so every version needs one. `npm version <x.y.z>`
 renames the `Unreleased` heading below to that version.
 
-## Unreleased
+## 0.3.1
 
 - "Reload app without saving" reloads again instead of closing Obsidian, in Obsidian 1.11 and earlier. Tab History now only holds Obsidian back to save when it has history that isn't saved yet.
 
