@@ -4,6 +4,10 @@ The release workflow uses the section named after the version being released
 as the release description, so every version needs one. `npm version <x.y.z>`
 renames the `Unreleased` heading below to that version.
 
+## Unreleased
+
+- "Reload app without saving" reloads again instead of closing Obsidian, in Obsidian 1.11 and earlier. Tab History now only holds Obsidian back to save when it has history that isn't saved yet.
+
 ## 0.3.0
 
 - New commands "Switch to previous tab (most recently used)" and "Show recent tabs": switch tabs in most-recently-used order, across popout windows, remembered across restarts. Bind them to Ctrl+Tab and hold Ctrl to cycle.

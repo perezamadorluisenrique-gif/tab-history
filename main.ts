@@ -137,7 +137,12 @@ export default class TabHistoryPlugin extends Plugin {
     }));
     this.registerEvent(this.app.workspace.on('file-open', () => this.requestSave()));
     // Obsidian waits for what is added here before it closes.
-    this.registerEvent(this.app.workspace.on('quit', (tasks) => tasks.addPromise(this.saveHistory())));
+    // Up to Obsidian 1.11 at least, reloading the app also fires quit, and a
+    // task left pending there makes Obsidian close the window after it
+    // instead of reloading. So a task only when there is history to save.
+    this.registerEvent(this.app.workspace.on('quit', (tasks) => {
+      if (this.pendingHistory()) tasks.addPromise(this.saveHistory());
+    }));
     this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
       renameInSaved(this.saved, oldPath, file.path);
       this.requestSave();
@@ -218,13 +223,19 @@ export default class TabHistoryPlugin extends Plugin {
     this.requestSave();
   }
 
-  private async saveHistory() {
+  /** The history to write, or null when what is saved is already current. */
+  private pendingHistory(): SavedHistory | null {
     // Until restore has run, tabs are still empty and would overwrite what is saved.
-    if (!this.restored || !this.historySupported) return;
+    if (!this.restored || !this.historySupported) return null;
     const next = this.settings.persistHistory
       ? snapshot(this.liveTabs(), this.exists, this.settings.maxEntries)
       : emptySaved();
-    if (sameSaved(next, this.saved)) return;
+    return sameSaved(next, this.saved) ? null : next;
+  }
+
+  private async saveHistory() {
+    const next = this.pendingHistory();
+    if (!next) return;
     this.saved = next;
     await this.persist();
   }
