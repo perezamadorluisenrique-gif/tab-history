@@ -2,7 +2,7 @@
 
 Keeps each tab's back and forward history across restarts, and adds commands to move, maximize and close tabs.
 
-![The recent tabs list from Tab History](docs/screenshot.png)
+![The recent tabs list from Tab History](https://raw.githubusercontent.com/perezamadorluisenrique-gif/tab-history/main/docs/screenshot.png)
 
 Obsidian remembers where each tab has been, but only until you quit. With Tab History the back and forward arrows of every tab still work after a restart, and the commands Obsidian lacks for arranging tabs are there.
 
