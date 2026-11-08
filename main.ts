@@ -28,6 +28,7 @@ import {
 import { blocksActivation, jumpDelta, menuEntries, navLabel, type NavKind } from './src/nav.ts';
 import { activate, folderOf, parseMru, previousOf, reconcile, sameList, windowLabel } from './src/mru.ts';
 import { afterClose, moveIndex, moveItem, type AfterClose, type MoveTarget } from './src/tabs.ts';
+import { moreDefinitions, renderMore } from './src/more-link.ts';
 
 interface TabHistorySettings {
   persistHistory: boolean;
@@ -929,6 +930,7 @@ class TabHistorySettingTab extends PluginSettingTab {
         searchable: false,
         render: (setting: Setting) => this.clearButton(setting),
       },
+      ...(moreDefinitions() as SettingDefinitionItem[]),
     ];
   }
 
@@ -983,5 +985,6 @@ class TabHistorySettingTab extends PluginSettingTab {
       .setDesc(TEXT.recentIncludeSidebars.desc)
       .addToggle((t) => t.setValue(settings.recentIncludeSidebars).onChange((v) => this.setControlValue('recentIncludeSidebars', v)));
     this.clearButton(new Setting(containerEl).setName(TEXT.clear.name).setDesc(TEXT.clear.desc));
+    renderMore(this.containerEl, (el) => new Setting(el));
   }
 }
